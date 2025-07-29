@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workout Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <div class="container mx-auto p-4 max-w-lg">
+        <h1 class="text-3xl font-bold text-center mb-8">Workout Tracker</h1>
+
+        <!-- Auth Section -->
+        <div id="auth-section">
+            <div class="bg-white p-8 rounded-lg shadow-md">
+                <h2 id="auth-title" class="text-2xl font-bold mb-6 text-center">Login</h2>
+                <form id="auth-form">
+                    <div class="mb-4">
+                        <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="email" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" required>
+                    </div>
+                    <div class="mb-6">
+                        <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                        <input type="password" id="password" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" required>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Login</button>
+                </form>
+                <p id="auth-message" class="text-red-500 text-sm mt-4 text-center"></p>
+                <p class="mt-4 text-center text-sm">
+                    <a href="#" id="auth-switch-link" class="text-blue-500 hover:underline">Need an account? Sign Up</a>
+                </p>
+            </div>
+        </div>
+
+        <!-- App Section (Hidden by default) -->
+        <div id="app-section" class="hidden">
+            <header class="flex justify-between items-center mb-6">
+                <div>
+                    <button id="view-history-btn" class="bg-gray-200 px-4 py-2 rounded">View History</button>
+                </div>
+                <button id="logout-btn" class="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
+            </header>
+
+            <main>
+                <div id="routines-section">
+                    <h2 class="text-2xl font-bold mb-4">My Routines</h2>
+                    <div id="routines-list" class="grid grid-cols-1 gap-4">
+                        <!-- Routines will be listed here -->
+                    </div>
+                    <button id="add-routine-btn" class="mt-4 w-full bg-blue-500 text-white px-4 py-2 rounded">Add New Routine</button>
+                </div>
+
+                <div id="routine-form-section" class="hidden">
+                    <h2 class="text-2xl font-bold mb-4" id="routine-form-title">Add Routine</h2>
+                    <form id="routine-form">
+                        <input type="hidden" id="routine-id">
+                        <div class="mb-4">
+                            <label for="routine-name" class="block text-sm font-medium text-gray-700">Routine Name</label>
+                            <input type="text" id="routine-name" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" required>
+                        </div>
+                        <div id="exercises-container">
+                            <!-- Exercises will be added here -->
+                        </div>
+                        <button type="button" id="add-exercise-btn" class="mt-2 bg-green-500 text-white px-4 py-2 rounded">Add Exercise</button>
+                        <div class="mt-4 flex justify-end gap-4">
+                            <button type="button" id="cancel-routine-btn" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
+                            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Save Routine</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="workout-section" class="hidden">
+                    <h2 class="text-2xl font-bold mb-4" id="workout-routine-name"></h2>
+                    <div id="workout-exercises-list">
+                        <!-- Workout exercises and set logging will be here -->
+                    </div>
+                    <div class="mt-4 flex justify-end gap-4">
+                         <button id="cancel-workout-btn" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel Workout</button>
+                         <button id="finish-workout-btn" class="bg-green-500 text-white px-4 py-2 rounded">Complete Workout</button>
+                    </div>
+                </div>
+
+                <div id="history-section" class="hidden">
+                    <h2 class="text-2xl font-bold mb-4">Workout History</h2>
+                    <div id="history-list">
+                        <!-- Past workout sessions will be listed here -->
+                    </div>
+                     <button id="back-to-routines-btn" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded">Back to Routines</button>
+                </div>
+            </main>
+        </div>
+
+    </div>
+
+    <script type="module" src="app.js"></script>
+    
+</body>
+</html>

@@ -4,7 +4,7 @@
   "description": "A simple workout tracker application",
   "main": "app.js",
   "scripts": {
-    "build": "echo \"export const SUPABASE_URL = '$SUPABASE_URL'; export const SUPABASE_KEY = '$SUPABASE_KEY';\" > config.js"
+    "build": "mkdir public && cp index.html app.js supabase.js public/ && echo \"export const SUPABASE_URL = '$SUPABASE_URL'; export const SUPABASE_KEY = '$SUPABASE_KEY';\" > public/config.js"
   },
   "keywords": [],
   "author": "",

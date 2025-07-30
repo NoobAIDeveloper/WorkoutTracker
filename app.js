@@ -1,5 +1,3 @@
-
-
 import { supabase } from './supabase.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const routineFormSection = document.getElementById('routine-form-section');
     const workoutSection = document.getElementById('workout-section');
     const historySection = document.getElementById('history-section');
+    const profileSection = document.getElementById('profile-section');
 
     // Auth Elements
     const loginBtn = document.getElementById('login-btn');
@@ -28,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const backToRoutinesBtn = document.getElementById('back-to-routines-btn');
     const cancelWorkoutBtn = document.getElementById('cancel-workout-btn');
     const viewHistoryBtn = document.getElementById('view-history-btn');
+    const viewProfileBtn = document.getElementById('view-profile-btn');
 
     // Form Elements
     const routineForm = document.getElementById('routine-form');
@@ -35,6 +35,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const routineIdInput = document.getElementById('routine-id');
     const routineNameInput = document.getElementById('routine-name');
     const exercisesContainer = document.getElementById('exercises-container');
+
+    // Profile Form Elements
+    const profileForm = document.getElementById('profile-form');
+    const heightInput = document.getElementById('height');
+    const bodyWeightInput = document.getElementById('body-weight');
+    const cancelProfileBtn = document.getElementById('cancel-profile-btn');
 
     // Lists
     const routinesList = document.getElementById('routines-list');
@@ -108,12 +114,14 @@ document.addEventListener('DOMContentLoaded', () => {
         routineFormSection.classList.add('hidden');
         workoutSection.classList.add('hidden');
         historySection.classList.add('hidden');
+        profileSection.classList.add('hidden');
 
         const sectionMap = {
             'routines': routinesSection,
             'routine-form': routineFormSection,
             'workout': workoutSection,
             'history': historySection,
+            'profile': profileSection,
         };
 
         if (sectionMap[sectionName]) {
@@ -138,17 +146,27 @@ document.addEventListener('DOMContentLoaded', () => {
         showSection('history');
     });
 
+    viewProfileBtn.addEventListener('click', () => {
+        loadProfile();
+        showSection('profile');
+    });
+
 
     // --- Routine Management --- //
 
     addExerciseBtn.addEventListener('click', () => addExerciseInput());
 
-    function addExerciseInput(name = '') {
+    function addExerciseInput(name = '', sets = 3) {
         const div = document.createElement('div');
-        div.className = 'flex items-center mb-2';
+        div.className = 'flex items-center mb-2 gap-2 exercise-row';
         div.innerHTML = `
             <input type="text" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm exercise-name" placeholder="Exercise Name" value="${name}" required>
-            <button type="button" class="remove-exercise-btn ml-2 bg-red-500 text-white px-2 py-1 rounded">X</button>
+            <input type="number" class="mt-1 block w-20 px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm exercise-sets" placeholder="Sets" value="${sets}" min="1" required>
+            <div class="flex items-center">
+                <input type="checkbox" class="mr-2 exercise-bodyweight">
+                <label class="text-sm">Bodyweight</label>
+            </div>
+            <button type="button" class="remove-exercise-btn bg-red-500 text-white px-2 py-1 rounded w-8">X</button>
         `;
         exercisesContainer.appendChild(div);
         div.querySelector('.remove-exercise-btn').addEventListener('click', () => div.remove());
@@ -162,8 +180,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const routineName = routineNameInput.value;
-        const exerciseInputs = exercisesContainer.querySelectorAll('.exercise-name');
-        const exercises = Array.from(exerciseInputs).map(input => ({ name: input.value }));
+        const exerciseInputs = exercisesContainer.querySelectorAll('.exercise-row');
+        const exercises = Array.from(exerciseInputs).map(div => {
+            const name = div.querySelector('.exercise-name').value;
+            const sets = parseInt(div.querySelector('.exercise-sets').value, 10);
+            const bodyweight = div.querySelector('.exercise-bodyweight').checked;
+            return { name, sets, bodyweight };
+        });
 
         const routineData = {
             name: routineName,
@@ -235,7 +258,11 @@ document.addEventListener('DOMContentLoaded', () => {
             routineIdInput.value = routine.id;
             routineNameInput.value = routine.name;
             exercisesContainer.innerHTML = '';
-            routine.exercises.forEach(ex => addExerciseInput(ex.name));
+            routine.exercises.forEach(ex => {
+                addExerciseInput(ex.name, ex.sets);
+                const newExerciseRow = exercisesContainer.lastElementChild;
+                newExerciseRow.querySelector('.exercise-bodyweight').checked = ex.bodyweight || false;
+            });
             showSection('routine-form');
         }
 
@@ -266,10 +293,24 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('body_weight')
+            .eq('user_id', currentUser.id)
+            .single();
+
         currentWorkout = {
             routine_id: routineId,
             routine_name: routineName,
-            exercises: routine.exercises.map(ex => ({ name: ex.name, sets: [] }))
+            body_weight: profile ? profile.body_weight : 0,
+            exercises: routine.exercises.map(ex => ({
+                name: ex.name,
+                bodyweight: ex.bodyweight,
+                sets: Array.from({ length: ex.sets }, () => ({ 
+                    weight: ex.bodyweight ? (profile ? profile.body_weight : 0) : '', 
+                    reps: '', 
+                }))
+            }))
         };
 
         document.getElementById('workout-routine-name').textContent = routineName;
@@ -283,84 +324,50 @@ document.addEventListener('DOMContentLoaded', () => {
             const div = document.createElement('div');
             div.className = 'bg-white p-4 rounded shadow mb-4';
             div.innerHTML = `
-                <h4 class="text-lg font-bold">${exercise.name}</h4>
+                <h4 class="text-lg font-bold">${exercise.name} ${exercise.bodyweight ? '(Bodyweight)' : ''}</h4>
                 <div class="sets-list mt-2">
                     ${exercise.sets.map((set, setIndex) => `
                         <div class="flex items-center justify-between p-2 bg-gray-100 rounded mb-1">
-                            <span>Set ${setIndex + 1}: ${set.weight} kg x ${set.reps} reps</span>
-                            <div>
-                                <button class="edit-set-btn text-sm text-yellow-600" data-ex-index="${index}" data-set-index="${setIndex}">Edit</button>
-                                <button class="delete-set-btn text-sm text-red-600 ml-2" data-ex-index="${index}" data-set-index="${setIndex}">Delete</button>
-                            </div>
+                            <span>Set ${setIndex + 1}:</span>
+                            <input type="number" class="w-20 p-1 border rounded set-weight" placeholder="Weight" value="${set.weight}" data-ex-index="${index}" data-set-index="${setIndex}">
+                            <input type="number" class="w-20 p-1 border rounded set-reps" placeholder="Reps" value="${set.reps}" data-ex-index="${index}" data-set-index="${setIndex}">
+                            <button class="delete-set-btn text-sm text-red-600" data-ex-index="${index}" data-set-index="${setIndex}">Delete</button>
                         </div>
                     `).join('')}
                 </div>
-                <div class="add-set-form mt-2 flex gap-2">
-                    <input type="number" class="w-1/2 p-2 border rounded" placeholder="Weight (kg)">
-                    <input type="number" class="w-1/2 p-2 border rounded" placeholder="Reps">
-                    <button class="add-set-btn bg-green-500 text-white px-3 py-1 rounded" data-ex-index="${index}">Add Set</button>
-                </div>
+                <button class="add-set-btn mt-2 bg-green-500 text-white px-3 py-1 rounded" data-ex-index="${index}">Add Set</button>
             `;
             workoutExercisesList.appendChild(div);
         });
     }
+
+    workoutExercisesList.addEventListener('input', (e) => {
+        const target = e.target;
+        const exIndex = target.dataset.exIndex;
+        const setIndex = target.dataset.setIndex;
+
+        if (target.classList.contains('set-weight')) {
+            currentWorkout.exercises[exIndex].sets[setIndex].weight = target.value;
+        }
+
+        if (target.classList.contains('set-reps')) {
+            currentWorkout.exercises[exIndex].sets[setIndex].reps = target.value;
+        }
+    });
 
     workoutExercisesList.addEventListener('click', (e) => {
         const target = e.target;
         const exIndex = target.dataset.exIndex;
 
         if (target.classList.contains('add-set-btn')) {
-            const form = target.closest('.add-set-form');
-            const weightInput = form.querySelector('input[placeholder="Weight (kg)"]');
-            const repsInput = form.querySelector('input[placeholder="Reps"]');
-            const weight = parseFloat(weightInput.value);
-            const reps = parseInt(repsInput.value);
-
-            if (!isNaN(weight) && !isNaN(reps)) {
-                currentWorkout.exercises[exIndex].sets.push({ weight, reps });
-                renderWorkoutExercises();
-            }
+            currentWorkout.exercises[exIndex].sets.push({ weight: '', reps: '', bodyweight: false });
+            renderWorkoutExercises();
         }
 
         if (target.classList.contains('delete-set-btn')) {
             const setIndex = target.dataset.setIndex;
             currentWorkout.exercises[exIndex].sets.splice(setIndex, 1);
             renderWorkoutExercises();
-        }
-
-        if (target.classList.contains('edit-set-btn')) {
-            const setIndex = target.dataset.setIndex;
-            const set = currentWorkout.exercises[exIndex].sets[setIndex];
-            const newWeight = prompt("Enter new weight:", set.weight);
-            const newReps = prompt("Enter new reps:", set.reps);
-
-            if (newWeight !== null && newReps !== null) {
-                set.weight = parseFloat(newWeight) || set.weight;
-                set.reps = parseInt(newReps) || set.reps;
-                renderWorkoutExercises();
-            }
-        }
-    });
-
-    document.getElementById('finish-workout-btn').addEventListener('click', async () => {
-        if (!currentUser || !currentWorkout) return;
-
-        const workoutData = {
-            user_id: currentUser.id,
-            routine_id: currentWorkout.routine_id,
-            routine_name: currentWorkout.routine_name,
-            date: new Date().toISOString(),
-            exercises: currentWorkout.exercises,
-        };
-
-        const { error } = await supabase.from('workouts').insert(workoutData);
-
-        if (error) {
-            alert('Error saving workout: ' + error.message);
-        } else {
-            alert('Workout saved successfully!');
-            currentWorkout = null;
-            showSection('routines');
         }
     });
 
@@ -392,14 +399,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h3 class="text-xl font-bold">${workout.routine_name}</h3>
                         <p class="text-sm text-gray-500">${workoutDate}</p>
                     </div>
-                    <button class="view-workout-details-btn bg-gray-200 px-3 py-1 rounded" data-id="${workout.id}">Details</button>
+                    <div class="flex items-center gap-2">
+                        <button class="view-workout-details-btn bg-gray-200 px-3 py-1 rounded" data-id="${workout.id}">Details</button>
+                        <button class="delete-workout-btn bg-red-500 text-white px-3 py-1 rounded" data-id="${workout.id}">Delete</button>
+                    </div>
                 </div>
                 <div class="workout-details hidden mt-4">
                     ${workout.exercises.map(ex => `
                         <div class="mb-2">
                             <h5 class="font-semibold">${ex.name}</h5>
                             <ul class="list-disc list-inside pl-2">
-                                ${ex.sets.map(set => `<li>${set.weight} kg x ${set.reps} reps</li>`).join('')}
+                                ${ex.sets.map(set => `<li>${set.bodyweight ? 'Bodyweight' : set.weight + ' kg'} x ${set.reps} reps</li>`).join('')}
                             </ul>
                         </div>
                     `).join('')}
@@ -409,10 +419,69 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    async function deleteWorkout(workoutId) {
+        const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
+        if (error) {
+            alert('Error deleting workout: ' + error.message);
+        } else {
+            loadWorkoutHistory();
+        }
+    }
+
     historyList.addEventListener('click', (e) => {
-        if (e.target.classList.contains('view-workout-details-btn')) {
-            const details = e.target.closest('div').nextElementSibling;
-            details.classList.toggle('hidden');
+        const target = e.target;
+        if (target.classList.contains('view-workout-details-btn')) {
+            const details = target.closest('.bg-white').querySelector('.workout-details');
+            if (details) {
+                details.classList.toggle('hidden');
+            }
+        }
+
+        if (target.classList.contains('delete-workout-btn')) {
+            const workoutId = target.dataset.id;
+            if (confirm('Are you sure you want to delete this workout?')) {
+                deleteWorkout(workoutId);
+            }
+        }
+    });
+
+    // --- Profile Management --- //
+
+    cancelProfileBtn.addEventListener('click', () => showSection('routines'));
+
+    async function loadProfile() {
+        if (!currentUser) return;
+
+        const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('height, body_weight')
+            .eq('user_id', currentUser.id)
+            .single();
+
+        if (profile) {
+            heightInput.value = profile.height || '';
+            bodyWeightInput.value = profile.body_weight || '';
+        }
+    }
+
+    profileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+
+        const profileData = {
+            user_id: currentUser.id,
+            height: heightInput.value,
+            body_weight: bodyWeightInput.value,
+            updated_at: new Date().toISOString(),
+        };
+
+        const { error } = await supabase.from('profiles').upsert(profileData, { onConflict: 'user_id' });
+
+        if (error) {
+            alert('Error saving profile: ' + error.message);
+        } else {
+            alert('Profile saved successfully!');
+            showSection('routines');
         }
     });
 

@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelWorkoutBtn = document.getElementById('cancel-workout-btn');
     const viewHistoryBtn = document.getElementById('view-history-btn');
     const viewProfileBtn = document.getElementById('view-profile-btn');
+    const finishWorkoutBtn = document.getElementById('finish-workout-btn');
 
     // Form Elements
     const routineForm = document.getElementById('routine-form');
@@ -42,12 +43,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const bodyWeightInput = document.getElementById('body-weight');
     const cancelProfileBtn = document.getElementById('cancel-profile-btn');
 
+    // Unit Toggle
+    const unitToggle = document.getElementById('unit-toggle');
+
     // Lists
     const routinesList = document.getElementById('routines-list');
     const workoutExercisesList = document.getElementById('workout-exercises-list');
     const historyList = document.getElementById('history-list');
 
+    // Dashboard Elements
+    const dashboardSection = document.getElementById('dashboard-section');
+    const workoutsThisWeekEl = document.getElementById('workouts-this-week');
+    const oneRepMaxExerciseNames = document.querySelectorAll('.one-rep-max-exercise-name');
+    const oneRepMaxValues = document.querySelectorAll('.one-rep-max-value');
+    const oneRepMaxUnitEl = document.getElementById('one-rep-max-unit');
+    const weeklyVolumeChartCanvas = document.getElementById('weekly-volume-chart');
+
     let currentUser = null;
+    let weightUnit = 'kg'; // 'kg' or 'lbs'
 
     // --- Authentication --- //
 
@@ -57,6 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
             currentUser = session.user;
             authSection.classList.add('hidden');
             appSection.classList.remove('hidden');
+            loadUserProfile();
+            loadDashboardData();
             loadRoutines();
             showSection('routines');
         } else {
@@ -147,8 +162,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     viewProfileBtn.addEventListener('click', () => {
-        loadProfile();
+        openProfilePage();
         showSection('profile');
+    });
+
+    unitToggle.addEventListener('change', async () => {
+        weightUnit = unitToggle.checked ? 'lbs' : 'kg';
+        if (currentUser) {
+            await supabase.from('profiles').upsert({ user_id: currentUser.id, weight_unit: weightUnit }, { onConflict: 'user_id' });
+        }
+        // Re-render any views that display weight
+        if (routinesSection.classList.contains('hidden') === false) {
+            loadRoutines();
+        } else if (workoutSection.classList.contains('hidden') === false) {
+            renderWorkoutExercises();
+        } else if (historySection.classList.contains('hidden') === false) {
+            loadWorkoutHistory();
+        }
     });
 
 
@@ -295,9 +325,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const { data: profile, error: profileError } = await supabase
             .from('profiles')
-            .select('body_weight')
+            .select('body_weight, weight_unit')
             .eq('user_id', currentUser.id)
             .single();
+
+        if (profile && profile.weight_unit) {
+            weightUnit = profile.weight_unit;
+            unitToggle.checked = weightUnit === 'lbs';
+        }
 
         currentWorkout = {
             routine_id: routineId,
@@ -307,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 name: ex.name,
                 bodyweight: ex.bodyweight,
                 sets: Array.from({ length: ex.sets }, () => ({ 
-                    weight: ex.bodyweight ? (profile ? profile.body_weight : 0) : '', 
+                    weight: ex.bodyweight ? convertWeight(profile ? profile.body_weight : 0, weightUnit) : '', 
                     reps: '', 
                 }))
             }))
@@ -330,6 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="flex items-center justify-between p-2 bg-gray-100 rounded mb-1">
                             <span>Set ${setIndex + 1}:</span>
                             <input type="number" class="w-20 p-1 border rounded set-weight" placeholder="Weight" value="${set.weight}" data-ex-index="${index}" data-set-index="${setIndex}">
+                            <span class="ml-2">${weightUnit}</span>
                             <input type="number" class="w-20 p-1 border rounded set-reps" placeholder="Reps" value="${set.reps}" data-ex-index="${index}" data-set-index="${setIndex}">
                             <button class="delete-set-btn text-sm text-red-600" data-ex-index="${index}" data-set-index="${setIndex}">Delete</button>
                         </div>
@@ -347,7 +383,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const setIndex = target.dataset.setIndex;
 
         if (target.classList.contains('set-weight')) {
-            currentWorkout.exercises[exIndex].sets[setIndex].weight = target.value;
+            let weight = target.value;
+            currentWorkout.exercises[exIndex].sets[setIndex].weight = weight;
         }
 
         if (target.classList.contains('set-reps')) {
@@ -370,6 +407,216 @@ document.addEventListener('DOMContentLoaded', () => {
             renderWorkoutExercises();
         }
     });
+
+    finishWorkoutBtn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to complete this workout?')) {
+            finishWorkout();
+        }
+    });
+
+
+    async function finishWorkout() {
+        if (!currentWorkout) return;
+
+        const workoutData = {
+            user_id: currentUser.id,
+            routine_id: currentWorkout.routine_id,
+            routine_name: currentWorkout.routine_name,
+            exercises: currentWorkout.exercises.map(ex => ({
+                ...ex,
+                sets: ex.sets.map(set => {
+                    let weightInKg = set.weight;
+                    if (weightUnit === 'lbs') {
+                        weightInKg = lbsToKg(set.weight);
+                    }
+                    return { ...set, weight: weightInKg };
+                })
+            })),
+            date: new Date().toISOString(),
+        };
+
+        const { error } = await supabase.from('workouts').insert(workoutData);
+
+        if (error) {
+            alert('Error saving workout: ' + error.message);
+        } else {
+            alert('Workout saved successfully!');
+            currentWorkout = null;
+            loadDashboardData();
+            showSection('routines');
+        }
+    }
+
+
+    // --- Dashboard --- //
+
+    const exerciseModal = document.getElementById('exercise-modal');
+    const exerciseSelectForm = document.getElementById('exercise-select-form');
+    const modalExercisesContainer = document.getElementById('modal-exercises-container');
+    const cancelExerciseSelectBtn = document.getElementById('cancel-exercise-select');
+    const editDashboardExercisesBtn = document.getElementById('edit-dashboard-exercises');
+
+    editDashboardExercisesBtn.addEventListener('click', async () => {
+        const { data: workouts } = await supabase.from('workouts').select('exercises').eq('user_id', currentUser.id);
+        const allExercises = [...new Set(workouts.flatMap(w => w.exercises.map(e => e.name)))];
+        
+        const { data: profile } = await supabase.from('profiles').select('dashboard_exercises').eq('user_id', currentUser.id).single();
+        const savedExercises = profile.dashboard_exercises || [];
+
+        modalExercisesContainer.innerHTML = '';
+        allExercises.forEach(ex => {
+            const isChecked = savedExercises.includes(ex);
+            modalExercisesContainer.innerHTML += `
+                <div>
+                    <input type="checkbox" id="ex-${ex}" value="${ex}" class="mr-2" ${isChecked ? 'checked' : ''}>
+                    <label for="ex-${ex}">${ex}</label>
+                </div>
+            `;
+        });
+        exerciseModal.classList.remove('hidden');
+    });
+
+    cancelExerciseSelectBtn.addEventListener('click', () => {
+        exerciseModal.classList.add('hidden');
+    });
+
+    exerciseSelectForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const selectedExercises = Array.from(modalExercisesContainer.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+        if (selectedExercises.length > 3) {
+            alert('You can only select up to 3 exercises for the dashboard.');
+            return;
+        }
+
+        await supabase.from('profiles').upsert({ user_id: currentUser.id, dashboard_exercises: selectedExercises }, { onConflict: 'user_id' });
+        exerciseModal.classList.add('hidden');
+        loadDashboardData();
+    });
+
+    async function loadDashboardData() {
+        if (!currentUser) return;
+
+        const { data: workouts, error } = await supabase
+            .from('workouts')
+            .select('date, exercises')
+            .eq('user_id', currentUser.id)
+            .order('date', { ascending: false });
+
+        if (error) {
+            console.error('Error loading workout data for dashboard:', error);
+            return;
+        }
+
+        // Workouts This Week
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        const workoutsThisWeek = workouts.filter(w => new Date(w.date) > oneWeekAgo).length;
+        workoutsThisWeekEl.textContent = workoutsThisWeek;
+
+        oneRepMaxUnitEl.textContent = weightUnit;
+
+        // 1 Rep Max
+        const { data: profile } = await supabase.from('profiles').select('dashboard_exercises').eq('user_id', currentUser.id).single();
+        const savedExercises = profile.dashboard_exercises || [];
+        
+        oneRepMaxExerciseNames.forEach((nameEl, i) => {
+            const exerciseName = savedExercises[i];
+            if (exerciseName) {
+                nameEl.textContent = exerciseName;
+                calculateAndDisplayOneRepMax(exerciseName, i, workouts);
+            } else {
+                nameEl.textContent = 'Select Exercise';
+                oneRepMaxValues[i].textContent = '-';
+            }
+        });
+
+        // Weekly Volume Chart
+        renderWeeklyVolumeChart(workouts);
+    }
+
+    
+
+    function calculateAndDisplayOneRepMax(exerciseName, cardIndex, workouts) {
+        if (!exerciseName) {
+            oneRepMaxValues[cardIndex].textContent = '-';
+            return;
+        }
+
+        let max1RM = 0;
+        workouts.forEach(workout => {
+            workout.exercises.forEach(ex => {
+                if (ex.name === exerciseName) {
+                    ex.sets.forEach(set => {
+                        if (set.weight && set.reps) {
+                            const oneRM = set.weight * (1 + set.reps / 30); // Epley formula
+                            if (oneRM > max1RM) {
+                                max1RM = oneRM;
+                            }
+                        }
+                    });
+                }
+            });
+        });
+
+        oneRepMaxValues[cardIndex].textContent = max1RM > 0 ? `${max1RM.toFixed(1)}` : '-';
+    }
+
+    function renderWeeklyVolumeChart(workouts) {
+        const weeklyData = {};
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - (i * 7));
+            const weekStart = d.toISOString().split('T')[0];
+            weeklyData[weekStart] = 0;
+        }
+
+        workouts.forEach(workout => {
+            const workoutDate = new Date(workout.date);
+            const weekStart = Object.keys(weeklyData).reverse().find(ws => workoutDate >= new Date(ws));
+            if (weekStart) {
+                const volume = workout.exercises.reduce((total, ex) => {
+                    return total + ex.sets.reduce((setTotal, set) => {
+                        return setTotal + (set.weight * set.reps || 0);
+                    }, 0);
+                }, 0);
+                weeklyData[weekStart] += volume;
+            }
+        });
+
+        const labels = Object.keys(weeklyData).map(ws => new Date(ws).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+        const dataInTons = Object.values(weeklyData).map(kg => kg / 1000);
+
+        new Chart(weeklyVolumeChartCanvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: `Weekly Volume (tons)`,
+                    data: dataInTons,
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            display: false
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+    }
 
 
     // --- Workout History --- //
@@ -409,7 +656,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="mb-2">
                             <h5 class="font-semibold">${ex.name}</h5>
                             <ul class="list-disc list-inside pl-2">
-                                ${ex.sets.map(set => `<li>${set.bodyweight ? 'Bodyweight' : set.weight + ' kg'} x ${set.reps} reps</li>`).join('')}
+                                ${ex.sets.map(set => `<li>${set.bodyweight ? 'Bodyweight' : `${convertWeight(set.weight, weightUnit)} ${weightUnit}`} x ${set.reps} reps</li>`).join('')}
                             </ul>
                         </div>
                     `).join('')}
@@ -445,11 +692,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // --- Profile Management --- //
+    // --- Utility Functions ---
+    const kgToLbs = (kg) => (kg * 2.20462).toFixed(2);
+    const lbsToKg = (lbs) => (lbs / 2.20462).toFixed(2);
+
+    function convertWeight(weight, toUnit) {
+        if (weight === null || weight === '' || isNaN(weight)) return '';
+        const currentUnit = weightUnit;
+        if (currentUnit === toUnit) return weight;
+
+        if (toUnit === 'lbs') {
+            return kgToLbs(weight);
+        } else {
+            return lbsToKg(weight);
+        }
+    }
+
+
+    // --- Profile Management ---
 
     cancelProfileBtn.addEventListener('click', () => showSection('routines'));
 
-    async function loadProfile() {
+    async function loadUserProfile() {
+        if (!currentUser) return;
+
+        const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('weight_unit')
+            .eq('user_id', currentUser.id)
+            .single();
+
+        if (profile && profile.weight_unit) {
+            weightUnit = profile.weight_unit;
+        } else {
+            weightUnit = 'kg'; // default
+        }
+        unitToggle.checked = weightUnit === 'lbs';
+    }
+
+    async function openProfilePage() {
         if (!currentUser) return;
 
         const { data: profile, error } = await supabase
@@ -460,7 +741,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (profile) {
             heightInput.value = profile.height || '';
-            bodyWeightInput.value = profile.body_weight || '';
+            const displayWeight = convertWeight(profile.body_weight, weightUnit);
+            bodyWeightInput.value = displayWeight || '';
         }
     }
 
@@ -468,10 +750,16 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         if (!currentUser) return;
 
+        let bodyWeightKg = bodyWeightInput.value;
+        if (weightUnit === 'lbs') {
+            bodyWeightKg = lbsToKg(bodyWeightInput.value);
+        }
+
         const profileData = {
             user_id: currentUser.id,
             height: heightInput.value,
-            body_weight: bodyWeightInput.value,
+            body_weight: bodyWeightKg,
+            weight_unit: weightUnit,
             updated_at: new Date().toISOString(),
         };
 

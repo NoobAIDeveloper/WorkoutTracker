@@ -5,14 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workout Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        input:checked ~ .dot {
+            transform: translateX(100%);
+            background-color: #48bb78;
+        }
+    </style>
     <script>
       window.va = window.va || function () { (window.va.q = window.va.q || []).push(arguments); };
     </script>
     <script src="/_vercel/insights/script.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-gray-100 text-gray-800">
     <div class="container mx-auto p-4 max-w-lg">
-        <h1 class="text-3xl font-bold text-center mb-8">JACKED</h1>
+        <div class="relative text-center mb-8">
+            <h1 class="text-3xl font-bold">JACKED</h1>
+            <div class="absolute top-0 right-0 flex items-center h-full">
+                <span class="text-sm font-medium text-gray-700">kg</span>
+                <label for="unit-toggle" class="flex items-center cursor-pointer mx-2">
+                    <div class="relative">
+                        <input type="checkbox" id="unit-toggle" class="sr-only">
+                        <div class="block bg-gray-600 w-14 h-8 rounded-full"></div>
+                        <div class="dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition"></div>
+                    </div>
+                </label>
+                <span class="text-sm font-medium text-gray-700">lbs</span>
+            </div>
+        </div>
 
         <!-- Auth Section -->
         <div id="auth-section">
@@ -36,6 +56,22 @@
             </div>
         </div>
 
+        <!-- Exercise Selection Modal -->
+        <div id="exercise-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center">
+            <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+                <h2 class="text-2xl font-bold mb-4">Select Dashboard Exercises</h2>
+                <form id="exercise-select-form">
+                    <div id="modal-exercises-container" class="space-y-2 mb-4">
+                        <!-- Exercise checkboxes will be here -->
+                    </div>
+                    <div class="flex justify-end gap-4">
+                        <button type="button" id="cancel-exercise-select" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
+                        <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <!-- App Section (Hidden by default) -->
         <div id="app-section" class="hidden">
             <header class="flex justify-between items-center mb-6 gap-2">
@@ -46,6 +82,32 @@
 
             <main>
                 <div id="routines-section">
+                    <div id="dashboard-section" class="mb-8">
+                        <h2 class="text-2xl font-bold mb-4">Dashboard</h2>
+                        <div class="bg-white p-4 rounded shadow mb-4 flex justify-between items-center">
+                            <p class="text-lg">Workouts This Week: <span id="workouts-this-week" class="font-bold">0</span></p>
+                            <button id="edit-dashboard-exercises" class="bg-blue-500 text-white px-4 py-2 rounded">Edit Dashboard</button>
+                        </div>
+                        <h3 class="text-xl font-bold mb-2">1 Rep Max (1RM) in <span id="one-rep-max-unit">kg</span></h3>
+                        <div class="grid grid-cols-3 gap-4 mb-4">
+                            <div class="bg-white p-4 rounded shadow flex flex-col justify-between" style="height: 8rem;">
+                                <div class="one-rep-max-exercise-name text-sm font-semibold text-left"></div>
+                                <p class="text-3xl font-bold text-left"><span class="one-rep-max-value">-</span></p>
+                            </div>
+                            <div class="bg-white p-4 rounded shadow flex flex-col justify-between" style="height: 8rem;">
+                                <div class="one-rep-max-exercise-name text-sm font-semibold text-left"></div>
+                                <p class="text-3xl font-bold text-left"><span class="one-rep-max-value">-</span></p>
+                            </div>
+                            <div class="bg-white p-4 rounded shadow flex flex-col justify-between" style="height: 8rem;">
+                                <div class="one-rep-max-exercise-name text-sm font-semibold text-left"></div>
+                                <p class="text-3xl font-bold text-left"><span class="one-rep-max-value">-</span></p>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold mb-2">Weekly Volume</h3>
+                            <canvas id="weekly-volume-chart"></canvas>
+                        </div>
+                    </div>
                     <h2 class="text-2xl font-bold mb-4">My Routines</h2>
                     <div id="routines-list" class="grid grid-cols-1 gap-4">
                         <!-- Routines will be listed here -->

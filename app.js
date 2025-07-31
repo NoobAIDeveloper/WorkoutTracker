@@ -61,9 +61,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const oneRepMaxValues = document.querySelectorAll('.one-rep-max-value');
     const oneRepMaxUnitEl = document.getElementById('one-rep-max-unit');
     const weeklyVolumeChartCanvas = document.getElementById('weekly-volume-chart');
+    const progressExerciseSelect = document.getElementById('progress-exercise-select');
+    const progressChartCanvas = document.getElementById('progress-chart');
 
     let currentUser = null;
     let weightUnit = 'kg'; // 'kg' or 'lbs'
+    let progressChart = null;
 
     // --- Authentication --- //
 
@@ -578,6 +581,112 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Weekly Volume Chart
         renderWeeklyVolumeChart(workouts);
+
+        // Progress Tracker
+        populateProgressExerciseSelect(workouts);
+
+        // Progress Tracker
+        populateProgressExerciseSelect(workouts);
+    }
+
+    function populateProgressExerciseSelect(workouts) {
+        const allExercises = [...new Set(workouts.flatMap(w => w.exercises.map(e => e.name)))];
+        progressExerciseSelect.innerHTML = '<option value="">Select an exercise</option>';
+        allExercises.forEach(ex => {
+            progressExerciseSelect.innerHTML += `<option value="${ex}">${ex}</option>`;
+        });
+
+        // Set a default exercise and render the chart
+        if (allExercises.length > 0) {
+            progressExerciseSelect.value = allExercises[0];
+            renderProgressChart(allExercises[0]);
+        }
+    }
+
+    progressExerciseSelect.addEventListener('change', async (e) => {
+        const exerciseName = e.target.value;
+        if (exerciseName) {
+            renderProgressChart(exerciseName);
+        }
+    });
+
+    async function renderProgressChart(exerciseName) {
+        if (!currentUser) return;
+
+        const { data: workouts, error } = await supabase
+            .from('workouts')
+            .select('date, exercises')
+            .eq('user_id', currentUser.id)
+            .order('date', { ascending: true });
+
+        if (error) {
+            console.error('Error loading workout data for progress chart:', error);
+            return;
+        }
+
+        const exerciseWorkouts = workouts.filter(w => w.exercises.some(e => e.name === exerciseName));
+
+        const last10Workouts = exerciseWorkouts.slice(-10);
+
+        const chartData = {
+            labels: [],
+            data: [],
+        };
+
+        last10Workouts.forEach(workout => {
+            const exercise = workout.exercises.find(e => e.name === exerciseName);
+            if (exercise) {
+                let max1RM = 0;
+                exercise.sets.forEach(set => {
+                    if (set.weight && set.reps) {
+                        const oneRM = set.weight * (1 + set.reps / 30); // Epley formula
+                        if (oneRM > max1RM) {
+                            max1RM = oneRM;
+                        }
+                    }
+                });
+
+                if (max1RM > 0) {
+                    chartData.labels.push(new Date(workout.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+                    chartData.data.push(max1RM.toFixed(1));
+                }
+            }
+        });
+
+        if (progressChart) {
+            progressChart.destroy();
+        }
+
+        progressChart = new Chart(progressChartCanvas, {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [{
+                    label: `1 Rep Max Progress for ${exerciseName}`,
+                    data: chartData.data,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            display: false
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
     }
 
     

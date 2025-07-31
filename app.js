@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const viewHistoryBtn = document.getElementById('view-history-btn');
     const viewProfileBtn = document.getElementById('view-profile-btn');
     const finishWorkoutBtn = document.getElementById('finish-workout-btn');
+    const copyPreviousWorkoutBtn = document.getElementById('copy-previous-workout-btn');
 
     // Form Elements
     const routineForm = document.getElementById('routine-form');
@@ -342,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 name: ex.name,
                 bodyweight: ex.bodyweight,
                 sets: Array.from({ length: ex.sets }, () => ({ 
-                    weight: ex.bodyweight ? convertWeight(profile ? profile.body_weight : 0, weightUnit) : '', 
+                    weight: ex.bodyweight ? convertWeight(profile ? profile.body_weight : 0, 'kg') : '', 
                     reps: '', 
                 }))
             }))
@@ -414,6 +415,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    copyPreviousWorkoutBtn.addEventListener('click', () => {
+        copyPreviousWorkout();
+    });
+
 
     async function finishWorkout() {
         if (!currentWorkout) return;
@@ -426,8 +431,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 ...ex,
                 sets: ex.sets.map(set => {
                     let weightInKg = set.weight;
-                    if (weightUnit === 'lbs') {
-                        weightInKg = lbsToKg(set.weight);
+                    if (set.weight === '' || set.weight === null || isNaN(set.weight)) {
+                        weightInKg = null;
+                    } else if (weightUnit === 'lbs') {
+                        weightInKg = lbsToKg(parseFloat(set.weight));
+                    } else { // weightUnit is 'kg'
+                        weightInKg = parseFloat(set.weight);
                     }
                     return { ...set, weight: weightInKg };
                 })
@@ -445,6 +454,39 @@ document.addEventListener('DOMContentLoaded', () => {
             loadDashboardData();
             showSection('routines');
         }
+    }
+
+    async function copyPreviousWorkout() {
+        if (!currentWorkout) return;
+
+        const { data: lastWorkout, error } = await supabase
+            .from('workouts')
+            .select('exercises')
+            .eq('user_id', currentUser.id)
+            .eq('routine_id', currentWorkout.routine_id)
+            .order('date', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error || !lastWorkout) {
+            alert('No previous workout found for this routine.');
+            return;
+        }
+
+        currentWorkout.exercises.forEach((exercise, exIndex) => {
+            const lastExercise = lastWorkout.exercises.find(ex => ex.name === exercise.name);
+            if (lastExercise) {
+                exercise.sets.forEach((set, setIndex) => {
+                    if (lastExercise.sets[setIndex]) {
+                        const weightInKg = lastExercise.sets[setIndex].weight;
+                        set.weight = convertWeight(weightInKg, weightUnit);
+                        set.reps = lastExercise.sets[setIndex].reps;
+                    }
+                });
+            }
+        });
+
+        renderWorkoutExercises();
     }
 
 
@@ -693,19 +735,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Utility Functions ---
-    const kgToLbs = (kg) => (kg * 2.20462).toFixed(2);
-    const lbsToKg = (lbs) => (lbs / 2.20462).toFixed(2);
+    const kgToLbs = (kg) => (kg * 2.20462);
+    const lbsToKg = (lbs) => (lbs / 2.20462);
 
-    function convertWeight(weight, toUnit) {
-        if (weight === null || weight === '' || isNaN(weight)) return '';
-        const currentUnit = weightUnit;
-        if (currentUnit === toUnit) return weight;
-
+    function convertWeight(weightInKg, toUnit) {
+        if (weightInKg === null || weightInKg === '' || isNaN(weightInKg)) return '';
         if (toUnit === 'lbs') {
-            return kgToLbs(weight);
-        } else {
-            return lbsToKg(weight);
+            return kgToLbs(weightInKg).toFixed(1);
         }
+        return parseFloat(weightInKg).toFixed(1);
     }
 
 

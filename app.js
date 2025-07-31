@@ -47,6 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Unit Toggle
     const unitToggle = document.getElementById('unit-toggle');
 
+    const unitToggleContainer = document.getElementById('unit-toggle-container');
+
     // Lists
     const routinesList = document.getElementById('routines-list');
     const workoutExercisesList = document.getElementById('workout-exercises-list');
@@ -71,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentUser = session.user;
             authSection.classList.add('hidden');
             appSection.classList.remove('hidden');
+            unitToggleContainer.classList.remove('hidden');
             loadUserProfile();
             loadDashboardData();
             loadRoutines();
@@ -79,6 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentUser = null;
             authSection.classList.remove('hidden');
             appSection.classList.add('hidden');
+            unitToggleContainer.classList.add('hidden');
         }
     };
 

@@ -79,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let restTimeRemaining = 0;
     let restTimerPaused = false;
     let lastRestDuration = 90; // default rest time
+    let restTimerEndTime = null; // timestamp when rest timer should finish
 
     // Stopwatch state for timed exercises
     let activeStopwatchInterval = null;
@@ -88,7 +89,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentWorkout = null;
     let currentExIndex = 0;
     let currentSetIndex = 0;
-    let workoutPhase = 'ready'; // 'ready' | 'in_set' | 'resting' | 'done'
+    let workoutPhase = 'ready'; // 'ready' | 'in_set' | 'resting' | 'done' | 'add_exercise'
+    let isFreestyle = false;
 
     // Exercise type definitions
     const EXERCISE_TYPES = {
@@ -389,6 +391,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    document.getElementById('freestyle-workout-btn').addEventListener('click', () => startFreestyleWorkout());
+
     addRoutineBtn.addEventListener('click', () => {
         routineFormTitle.textContent = 'Add Routine';
         routineForm.reset();
@@ -597,6 +601,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function startWorkout(routineId, routineName) {
+        isFreestyle = false;
         const { data: routine, error } = await supabase.from('routines').select('exercises').eq('id', routineId).single();
         if (error) {
             alert("Could not fetch routine details.");
@@ -644,6 +649,36 @@ document.addEventListener('DOMContentLoaded', () => {
         renderCurrentSet();
     }
 
+    async function startFreestyleWorkout() {
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('body_weight, weight_unit')
+            .eq('user_id', currentUser.id)
+            .single();
+
+        if (profile && profile.weight_unit) {
+            weightUnit = profile.weight_unit;
+            unitToggle.checked = weightUnit === 'lbs';
+        }
+
+        isFreestyle = true;
+        currentWorkout = {
+            routine_id: null,
+            routine_name: 'Freestyle Workout',
+            body_weight: profile ? profile.body_weight : 0,
+            exercises: []
+        };
+
+        currentExIndex = 0;
+        currentSetIndex = 0;
+        workoutPhase = 'add_exercise';
+
+        document.getElementById('workout-routine-name').textContent = 'Freestyle Workout';
+        showSection('workout');
+        startWorkoutTimer();
+        renderCurrentSet();
+    }
+
     function getTotalSets() {
         if (!currentWorkout) return 0;
         return currentWorkout.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
@@ -682,6 +717,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (workoutPhase === 'done') {
             renderWorkoutSummary();
+            return;
+        }
+
+        if (workoutPhase === 'add_exercise') {
+            updateProgressBar();
+            renderAddExercisePhase();
             return;
         }
 
@@ -832,10 +873,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const isLastSet = isAtLastSet();
-        const nextBtnText = isLastSet ? 'Finish Workout' : 'Next Set';
-        const nextBtnIcon = isLastSet
-            ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
-            : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>';
+        const isLastSetOfExercise = currentSetIndex >= exercise.sets.length - 1;
+        let nextBtnText, nextBtnIcon;
+        if (isFreestyle && isLastSetOfExercise) {
+            nextBtnText = 'Next Exercise';
+            nextBtnIcon = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>';
+        } else if (isLastSet) {
+            nextBtnText = 'Finish Workout';
+            nextBtnIcon = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+        } else {
+            nextBtnText = 'Next Set';
+            nextBtnIcon = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>';
+        }
 
         return `
             <div class="text-center mb-4">
@@ -863,6 +912,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="flex justify-center gap-3">
                 <button id="add-extra-set-btn" class="btn-press px-4 py-2 rounded-xl text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">+ Add Set</button>
+                ${isFreestyle ? `<button id="freestyle-finish-from-rest-btn" class="btn-press px-4 py-2 rounded-xl text-sm font-medium border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors">Finish Workout</button>` : ''}
             </div>
         `;
     }
@@ -947,6 +997,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('discard-workout-btn')?.addEventListener('click', () => {
             if (confirm('Discard this workout?')) {
                 currentWorkout = null;
+                isFreestyle = false;
                 clearWorkoutTimer();
                 clearRestTimer();
                 showSection('dashboard');
@@ -967,7 +1018,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             Back
                         </button>
                     ` : ''}
-                    <button id="skip-exercise-btn" class="btn-press px-3 py-2 rounded-xl text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Skip Exercise</button>
+                    <button id="skip-set-btn" class="btn-press px-3 py-2 rounded-xl text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Skip Set</button>
                 </div>
                 <div class="flex gap-2">
                     <button id="copy-previous-btn" class="btn-press px-3 py-2 rounded-xl text-sm font-medium border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center gap-1">
@@ -978,6 +1029,79 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `;
+    }
+
+    function renderAddExercisePhase() {
+        const typeOptions = Object.entries(EXERCISE_TYPES).map(([key, val]) =>
+            `<option value="${key}" ${key === 'weighted' ? 'selected' : ''}>${val.label}</option>`
+        ).join('');
+
+        const exerciseNum = currentWorkout.exercises.length + 1;
+
+        workoutCurrentSetEl.innerHTML = `
+            <div class="text-center mb-6">
+                <h3 class="text-2xl font-bold mt-1">Add Exercise #${exerciseNum}</h3>
+                <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">What are you working on next?</p>
+            </div>
+            <div class="card bg-white dark:bg-gray-900 p-6 mb-4">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Exercise Name</label>
+                    <input type="text" id="freestyle-exercise-name" class="input-styled w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm dark:text-white" placeholder="e.g. Bench Press" autofocus>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Type</label>
+                    <select id="freestyle-exercise-type" class="input-styled w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm dark:text-white">
+                        ${typeOptions}
+                    </select>
+                </div>
+                <button id="freestyle-add-exercise-btn" class="btn-press w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold text-lg transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Start Exercise
+                </button>
+            </div>
+            ${currentWorkout.exercises.length > 0 ? `
+                <button id="freestyle-finish-btn" class="btn-press w-full py-3 rounded-xl text-sm font-medium border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Finish Workout
+                </button>
+            ` : `
+                <button id="cancel-workout-nav-btn" class="btn-press w-full py-3 rounded-xl text-sm font-medium border border-red-300 dark:border-red-800 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">Cancel</button>
+            `}
+        `;
+
+        document.getElementById('freestyle-add-exercise-btn')?.addEventListener('click', () => {
+            const name = document.getElementById('freestyle-exercise-name').value.trim();
+            const type = document.getElementById('freestyle-exercise-type').value;
+            if (!name) {
+                document.getElementById('freestyle-exercise-name').focus();
+                return;
+            }
+            const newExercise = {
+                name: name,
+                type: type,
+                sets: [createEmptySet(type)]
+            };
+            currentWorkout.exercises.push(newExercise);
+            currentExIndex = currentWorkout.exercises.length - 1;
+            currentSetIndex = 0;
+            workoutPhase = 'ready';
+            renderCurrentSet();
+        });
+
+        document.getElementById('freestyle-finish-btn')?.addEventListener('click', () => {
+            workoutPhase = 'done';
+            renderCurrentSet();
+        });
+
+        document.getElementById('cancel-workout-nav-btn')?.addEventListener('click', () => {
+            if (confirm('Cancel this workout? All progress will be lost.')) {
+                currentWorkout = null;
+                isFreestyle = false;
+                clearWorkoutTimer();
+                clearRestTimer();
+                showSection('routines');
+            }
+        });
     }
 
     function attachWorkoutEventListeners() {
@@ -1019,7 +1143,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Next Set (from rest)
         document.getElementById('next-set-btn')?.addEventListener('click', () => {
             clearRestTimer();
-            if (isAtLastSet()) {
+            const exercise = currentWorkout.exercises[currentExIndex];
+            const isLastSetOfExercise = currentSetIndex >= exercise.sets.length - 1;
+            if (isFreestyle && isLastSetOfExercise) {
+                workoutPhase = 'add_exercise';
+                renderCurrentSet();
+            } else if (isAtLastSet()) {
                 workoutPhase = 'done';
                 renderCurrentSet();
             } else {
@@ -1039,6 +1168,13 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
+        // Finish workout from rest phase (freestyle)
+        document.getElementById('freestyle-finish-from-rest-btn')?.addEventListener('click', () => {
+            clearRestTimer();
+            workoutPhase = 'done';
+            renderCurrentSet();
+        });
+
         // Add extra set
         document.getElementById('add-extra-set-btn')?.addEventListener('click', () => {
             const exercise = currentWorkout.exercises[currentExIndex];
@@ -1056,19 +1192,21 @@ document.addEventListener('DOMContentLoaded', () => {
             renderCurrentSet();
         });
 
-        // Skip Exercise
-        document.getElementById('skip-exercise-btn')?.addEventListener('click', () => {
+        // Skip Set
+        document.getElementById('skip-set-btn')?.addEventListener('click', () => {
             clearRestTimer();
             stopActiveStopwatch();
-            if (currentExIndex < currentWorkout.exercises.length - 1) {
-                currentExIndex++;
-                currentSetIndex = 0;
-                workoutPhase = 'ready';
-                renderCurrentSet();
-            } else {
+            const exercise = currentWorkout.exercises[currentExIndex];
+            const isLastSetOfExercise = currentSetIndex >= exercise.sets.length - 1;
+            if (isFreestyle && isLastSetOfExercise) {
+                workoutPhase = 'add_exercise';
+            } else if (isAtLastSet()) {
                 workoutPhase = 'done';
-                renderCurrentSet();
+            } else {
+                advanceToNextSet();
+                workoutPhase = 'ready';
             }
+            renderCurrentSet();
         });
 
         // Copy Previous
@@ -1080,6 +1218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('cancel-workout-nav-btn')?.addEventListener('click', () => {
             if (confirm('Cancel this workout? All progress will be lost.')) {
                 currentWorkout = null;
+                isFreestyle = false;
                 clearWorkoutTimer();
                 clearRestTimer();
                 stopActiveStopwatch();
@@ -1188,19 +1327,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function startRestTimerCountdown(seconds) {
         clearRestTimer();
-        restTimeRemaining = seconds;
         restTimerPaused = false;
+        restTimerEndTime = Date.now() + seconds * 1000;
+        restTimeRemaining = seconds;
 
         restTimerInterval = setInterval(() => {
             if (!restTimerPaused) {
-                restTimeRemaining--;
+                const remaining = Math.round((restTimerEndTime - Date.now()) / 1000);
+                restTimeRemaining = Math.max(0, remaining);
                 const display = document.getElementById('rest-display');
                 if (display) {
-                    display.textContent = formatDuration(Math.max(0, restTimeRemaining));
+                    display.textContent = formatDuration(restTimeRemaining);
                 }
                 if (restTimeRemaining <= 0) {
                     clearInterval(restTimerInterval);
                     restTimerInterval = null;
+                    restTimerEndTime = null;
                     notifyRestComplete();
                     if (display) display.textContent = "0:00";
                 }
@@ -1215,7 +1357,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         restTimeRemaining = 0;
         restTimerPaused = false;
+        restTimerEndTime = null;
     }
+
+    // When the app returns to the foreground, sync the timer and catch expired timers
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && restTimerEndTime && !restTimerPaused) {
+            const remaining = Math.round((restTimerEndTime - Date.now()) / 1000);
+            if (remaining <= 0) {
+                // Timer expired while in background
+                clearInterval(restTimerInterval);
+                restTimerInterval = null;
+                restTimerEndTime = null;
+                restTimeRemaining = 0;
+                const display = document.getElementById('rest-display');
+                if (display) display.textContent = "0:00";
+                notifyRestComplete();
+            } else {
+                restTimeRemaining = remaining;
+                const display = document.getElementById('rest-display');
+                if (display) display.textContent = formatDuration(restTimeRemaining);
+            }
+        }
+    });
 
     function notifyRestComplete() {
         try {
@@ -1312,6 +1476,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const durationStr = formatDurationLong(elapsedSeconds);
             alert(`Workout saved!\nDuration: ${durationStr}`);
             currentWorkout = null;
+            isFreestyle = false;
             clearWorkoutTimer();
             clearRestTimer();
             loadDashboardData();
